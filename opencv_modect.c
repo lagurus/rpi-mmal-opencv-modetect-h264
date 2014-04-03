@@ -62,7 +62,6 @@ typedef struct {
 
     int opencv_width;
     int opencv_height;
-    IplImage* image;
     VCOS_SEMAPHORE_T complete_semaphore;
     
     signed int motion;
@@ -71,6 +70,8 @@ typedef struct {
     float video_fps;
     float opencv_fps;
     
+    IplImage* small_image; // resized image
+    IplImage* stub; // stub
 } PORT_USERDATA;
 
 int fill_port_buffer(MMAL_PORT_T *port, MMAL_POOL_T *pool) {
@@ -122,7 +123,13 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
     //if(1){
     if(userdata->grabframe){
       mmal_buffer_header_mem_lock(buffer);
-      memcpy(userdata->image->imageData, buffer->data, userdata->width * userdata->height);
+      
+      //monkey with the imageData pointer, to avoid a memcpy
+      char* oldImageData = userdata->stub->imageData;
+      userdata->stub->imageData = buffer->data;
+      cvResize(userdata->stub, userdata->small_image, CV_INTER_LINEAR);
+      userdata->stub->imageData = oldImageData;
+      
       mmal_buffer_header_mem_unlock(buffer);
 
       if (vcos_semaphore_trywait(&(userdata->complete_semaphore)) != VCOS_SUCCESS) {
@@ -416,9 +423,6 @@ int main(int argc, char** argv) {
     userdata.motion = 0;
     userdata.grabframe = 1;
 
-    /* setup opencv */
-    userdata.image = cvCreateImage(cvSize(userdata.width, userdata.height), IPL_DEPTH_8U, 1);
-
     fprintf(stderr, "VIDEO_WIDTH : %i\n", userdata.width );
     fprintf(stderr, "VIDEO_HEIGHT: %i\n", userdata.height );
     fprintf(stderr, "VIDEO_FPS   : %i\n", VIDEO_FPS);
@@ -444,8 +448,10 @@ int main(int argc, char** argv) {
 
     sub = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
     back = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
-    fore = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
     gray = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
+
+    userdata.small_image = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
+    userdata.stub = cvCreateImage(cvSize(userdata.width, userdata.height), IPL_DEPTH_8U, 1);
 
     int count = 0;
 
@@ -480,7 +486,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "FPS: OpenCV = %.2f, Video = %.2f\n", userdata.opencv_fps, userdata.video_fps);
           }
         
-          cvResize(userdata.image, fore, CV_INTER_LINEAR);
+          fore = userdata.small_image;
 
           if(!back){
             cvCopy(fore, back, NULL);
