@@ -32,3 +32,4 @@ Build
     $ make 
     
     
+4. use as ./mmal_opencv_modect > test.h264
