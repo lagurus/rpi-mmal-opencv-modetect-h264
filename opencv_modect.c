@@ -7,20 +7,12 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#include <opencv2/core/core_c.h>
-#include <opencv2/objdetect/objdetect.hpp>
-#include <opencv2/highgui/highgui_c.h>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/video/video.hpp>
-
 #include "bcm_host.h"
 #include "interface/vcos/vcos.h"
 
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
-
-#include "vgfont.h"
 
 #define MMAL_CAMERA_PREVIEW_PORT 0
 #define MMAL_CAMERA_VIDEO_PORT 1
@@ -61,8 +53,6 @@ typedef struct {
     MMAL_PORT_T *encoder_output_port;
     MMAL_POOL_T *encoder_output_pool;
 
-    int opencv_width;
-    int opencv_height;
     VCOS_SEMAPHORE_T complete_semaphore;
     
     signed int motion;
@@ -71,8 +61,6 @@ typedef struct {
     float video_fps;
     float opencv_fps;
     
-    IplImage* small_image; // resized image
-    IplImage* stub; // stub
 } PORT_USERDATA;
 
 int fill_port_buffer(MMAL_PORT_T *port, MMAL_POOL_T *pool) {
@@ -120,24 +108,6 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
       userdata->video_fps = fps;
       //fprintf(stderr, "  Frame = %d, Frame Post %d, Framerate = %.0f fps \n", frame_count, frame_post_count, fps);
     }
-
-    //if(1){
-    /*if(userdata->grabframe){
-      mmal_buffer_header_mem_lock(buffer);
-      
-      //monkey with the imageData pointer, to avoid a memcpy
-      char* oldImageData = userdata->stub->imageData;
-      userdata->stub->imageData = buffer->data;
-      cvResize(userdata->stub, userdata->small_image, CV_INTER_LINEAR);
-      userdata->stub->imageData = oldImageData;
-      
-      mmal_buffer_header_mem_unlock(buffer);
-
-      if (vcos_semaphore_trywait(&(userdata->complete_semaphore)) != VCOS_SUCCESS) {
-        vcos_semaphore_post(&(userdata->complete_semaphore));
-        frame_post_count++;
-      }
-    }*/
 
     //if(1){
     if(userdata->motion > 0){   
@@ -435,8 +405,7 @@ int main(int argc, char** argv) {
     userdata.width = VIDEO_WIDTH;
     userdata.height = VIDEO_HEIGHT;
 
-    userdata.opencv_width = 320;//userdata.width/4;
-    userdata.opencv_height = 240;//userdata.height/4;
+    
     userdata.motion = 0;
     userdata.grabframe = 1;
 
@@ -457,18 +426,6 @@ int main(int argc, char** argv) {
     }
 
     vcos_semaphore_create(&userdata.complete_semaphore, "mmal_opencv_video", 0);
-
-    IplImage* back = NULL;
-    IplImage* fore = NULL;
-    IplImage* sub = NULL;
-    IplImage* gray = NULL;
-
-    sub = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
-    back = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
-    gray = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
-
-    userdata.small_image = cvCreateImage(cvSize(userdata.opencv_width, userdata.opencv_height), IPL_DEPTH_8U, 1);
-    userdata.stub = cvCreateImage(cvSize(userdata.width, userdata.height), IPL_DEPTH_8U, 1);
 
     int count = 0;
 
@@ -499,72 +456,12 @@ int main(int argc, char** argv) {
 			}
 		
 		opencv_frames++;
-          //if (1) {
+          
           if( (CALC_FPS) && (opencv_frames % (VIDEO_FPS*2) == 0) ){
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1.tv_sec + t1.tv_nsec / 1000000000.0);
-            if (d > 0) {
-              userdata.opencv_fps = opencv_frames / d;
-            } else {
-              userdata.opencv_fps = opencv_frames;
-            }
-
-            //fprintf(stderr, "FPS: OpenCV = %.2f, Video = %.2f\n", userdata.opencv_fps, userdata.video_fps);
+            
+            
 			fprintf(stderr, "FPS: Video = %.2f\n", userdata.video_fps);
           }
-	
-		
-
-      /*if(1){
-        if (vcos_semaphore_wait(&(userdata.complete_semaphore)) == VCOS_SUCCESS) {
-          userdata.grabframe = 0;
-
-          opencv_frames++;
-          //if (1) {
-          if( (CALC_FPS) && (opencv_frames % (VIDEO_FPS*2) == 0) ){
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1.tv_sec + t1.tv_nsec / 1000000000.0);
-            if (d > 0) {
-              userdata.opencv_fps = opencv_frames / d;
-            } else {
-              userdata.opencv_fps = opencv_frames;
-            }
-
-            fprintf(stderr, "FPS: OpenCV = %.2f, Video = %.2f\n", userdata.opencv_fps, userdata.video_fps);
-          }
-        
-          fore = userdata.small_image;
-
-          if(!back){
-            cvCopy(fore, back, NULL);
-          }
-          
-          cvSub(back, fore, sub, NULL);
-          cvCopy(fore, back, NULL);
-          cvErode(sub, sub, NULL, 1);
-          cvCanny(sub, sub, 20, 60, 3);
-
-          //DUMP steps to files
-          //char fn[256];
-          //sprintf(fn, "/home/pi/test_fore_%d.jpg", count);
-          //cvSaveImage(fn, fore, 0);
-          //sprintf(fn, "/home/pi/test_sub_%d.jpg", count);
-          //cvSaveImage(fn, sub, 0);
-          //sprintf(fn, "/home/pi/test_back_%d.jpg", count);
-          //cvSaveImage(fn, back, 0);
-          //count++;
-
-         
-          int n = cvCountNonZero(sub);
-		 
-          //if(n>0){
-            //userdata.motion = VIDEO_FPS * 60;
-            //fprintf(stderr, "MOTION DETECTED (%d)\n", n);
-          //}              
-
-          userdata.grabframe = 1;
-        }
-      }*/
 	  
   
 
