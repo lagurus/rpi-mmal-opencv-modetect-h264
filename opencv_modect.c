@@ -144,8 +144,6 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
       MMAL_BUFFER_HEADER_T *output_buffer = mmal_queue_get(userdata->encoder_input_pool->queue);
       if(output_buffer){
 	  
-		//fprintf(stderr,  "image: mmal_queue_get have valid buffer, output_buffer->data=0x%02X, output_buffer->length=%d, output_buffer->alloc_size=%d, buffer->length=%d \n", output_buffer->data, output_buffer->length, output_buffer->alloc_size, buffer->length );
-	  
         mmal_buffer_header_mem_lock(buffer);
         memcpy(output_buffer->data, buffer->data, buffer->length);
         output_buffer->length = buffer->length;
@@ -556,11 +554,6 @@ int main(int argc, char** argv) {
 
          
           int n = cvCountNonZero(sub);
-	  
-		 //if (opencv_frames == 200)
-		//	 {
-		//	 n = 1;
-		//	 }
 		 
           //if(n>0){
             //userdata.motion = VIDEO_FPS * 60;
