@@ -28,17 +28,18 @@
 
 #define CALC_FPS 1
 
+/*
 //FPS: OpenCV = 15.05, Video = 30.51, ~60% CPU
 #define VIDEO_FPS 30 
 #define VIDEO_WIDTH 1280
 #define VIDEO_HEIGHT 720
+*/
 
-/*
 //FPS: OpenCV = 14.90, Video = 30.02, ~75% CPU
 #define VIDEO_FPS 30 
 #define VIDEO_WIDTH 1920
 #define VIDEO_HEIGHT 1080
-*/
+
 /*
 //FPS: OpenCV = 21.57, Video = 91.12, CPU ~90%
 #define VIDEO_FPS 90
@@ -121,7 +122,7 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
     }
 
     //if(1){
-    if(userdata->grabframe){
+    /*if(userdata->grabframe){
       mmal_buffer_header_mem_lock(buffer);
       
       //monkey with the imageData pointer, to avoid a memcpy
@@ -136,12 +137,15 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
         vcos_semaphore_post(&(userdata->complete_semaphore));
         frame_post_count++;
       }
-    }
+    }*/
 
     //if(1){
     if(userdata->motion > 0){   
       MMAL_BUFFER_HEADER_T *output_buffer = mmal_queue_get(userdata->encoder_input_pool->queue);
       if(output_buffer){
+	  
+		//fprintf(stderr,  "image: mmal_queue_get have valid buffer, output_buffer->data=0x%02X, output_buffer->length=%d, output_buffer->alloc_size=%d, buffer->length=%d \n", output_buffer->data, output_buffer->length, output_buffer->alloc_size, buffer->length );
+	  
         mmal_buffer_header_mem_lock(buffer);
         memcpy(output_buffer->data, buffer->data, buffer->length);
         output_buffer->length = buffer->length;
@@ -266,7 +270,7 @@ int setup_camera(PORT_USERDATA *userdata) {
     mmal_format_copy(camera_video_port->format, camera_preview_port->format);
 
     format = camera_video_port->format;
-    format->encoding = MMAL_ENCODING_I420;
+    format->encoding = MMAL_ENCODING_I420;// MMAL_ENCODING_OPAQUE;	// MMAL_ENCODING_I420;
     format->encoding_variant = MMAL_ENCODING_I420;
     format->es->video.width = VIDEO_WIDTH;
     format->es->video.height = VIDEO_HEIGHT;
@@ -353,7 +357,7 @@ int setup_encoder(PORT_USERDATA *userdata) {
     }
 
     // Only supporting H264 at the moment
-    encoder_output_port->format->encoding = MMAL_ENCODING_H264;
+    encoder_output_port->format->encoding = MMAL_ENCODING_H264;//MMAL_ENCODING_H264;	// MMAL_ENCODING_MJPEG
     encoder_output_port->format->bitrate = 2000000;
 
     encoder_output_port->buffer_size = encoder_output_port->buffer_size_recommended;
@@ -408,6 +412,19 @@ int setup_encoder(PORT_USERDATA *userdata) {
     return 0;
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------
+//
+unsigned GetTickCount( )
+{
+	struct timeval tv;
+	if(gettimeofday(&tv, NULL) != 0)
+		return 0;
+
+	return (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------
+//
 int main(int argc, char** argv) {
 
     PORT_USERDATA userdata;
@@ -463,12 +480,42 @@ int main(int argc, char** argv) {
     struct timespec s;
     s.tv_sec = 0;
     s.tv_nsec = 30000000;
+	
+	int nTotalFrameCount = VIDEO_FPS * 60;
+	
+	userdata.motion = nTotalFrameCount;
+	
+	unsigned dwTickCount_Start = GetTickCount( );
+	
 
-    while (1) {
+    while (1) 
+		{
 
-      //nanosleep(&s, NULL);
+		nanosleep(&s, NULL);
+	
+		if (userdata.motion == 0)
+			{
+			break;
+			}
+		
+		opencv_frames++;
+          //if (1) {
+          if( (CALC_FPS) && (opencv_frames % (VIDEO_FPS*2) == 0) ){
+            clock_gettime(CLOCK_MONOTONIC, &t2);
+            float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1.tv_sec + t1.tv_nsec / 1000000000.0);
+            if (d > 0) {
+              userdata.opencv_fps = opencv_frames / d;
+            } else {
+              userdata.opencv_fps = opencv_frames;
+            }
 
-      if(1){
+            //fprintf(stderr, "FPS: OpenCV = %.2f, Video = %.2f\n", userdata.opencv_fps, userdata.video_fps);
+			fprintf(stderr, "FPS: Video = %.2f\n", userdata.video_fps);
+          }
+	
+		
+
+      /*if(1){
         if (vcos_semaphore_wait(&(userdata.complete_semaphore)) == VCOS_SUCCESS) {
           userdata.grabframe = 0;
 
@@ -496,28 +543,41 @@ int main(int argc, char** argv) {
           cvCopy(fore, back, NULL);
           cvErode(sub, sub, NULL, 1);
           cvCanny(sub, sub, 20, 60, 3);
-/*
+
           //DUMP steps to files
-          char fn[256];
-          sprintf(fn, "/home/pi/test_fore_%d.jpg", count);
-          cvSaveImage(fn, fore, 0);
-          sprintf(fn, "/home/pi/test_sub_%d.jpg", count);
-          cvSaveImage(fn, sub, 0);
-          sprintf(fn, "/home/pi/test_back_%d.jpg", count);
-          cvSaveImage(fn, back, 0);
-          count++;
-*/
+          //char fn[256];
+          //sprintf(fn, "/home/pi/test_fore_%d.jpg", count);
+          //cvSaveImage(fn, fore, 0);
+          //sprintf(fn, "/home/pi/test_sub_%d.jpg", count);
+          //cvSaveImage(fn, sub, 0);
+          //sprintf(fn, "/home/pi/test_back_%d.jpg", count);
+          //cvSaveImage(fn, back, 0);
+          //count++;
+
          
           int n = cvCountNonZero(sub);
-          if(n>0){
-            userdata.motion = VIDEO_FPS;
-            fprintf(stderr, "MOTION DETECTED (%d)\n", n);
-          }              
+	  
+		 //if (opencv_frames == 200)
+		//	 {
+		//	 n = 1;
+		//	 }
+		 
+          //if(n>0){
+            //userdata.motion = VIDEO_FPS * 60;
+            //fprintf(stderr, "MOTION DETECTED (%d)\n", n);
+          //}              
 
           userdata.grabframe = 1;
         }
-      }
+      }*/
+	  
+  
+
     }
+
+	unsigned dwTickCount_End = GetTickCount( );
+  
+	fprintf( stderr, "%d frames were stored in %dms -> %.2f fps\n", nTotalFrameCount, (dwTickCount_End - dwTickCount_Start), nTotalFrameCount /  ((dwTickCount_End - dwTickCount_Start) / 1000.0) );
 
     return 0;
 }
