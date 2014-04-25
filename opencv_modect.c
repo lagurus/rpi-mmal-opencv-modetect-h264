@@ -144,6 +144,8 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
       MMAL_BUFFER_HEADER_T *output_buffer = mmal_queue_get(userdata->encoder_input_pool->queue);
       if(output_buffer){
 	  
+		//fprintf(stderr,  "image: mmal_queue_get have valid buffer, output_buffer->data=0x%02X, output_buffer->length=%d, output_buffer->alloc_size=%d, buffer->length=%d \n", output_buffer->data, output_buffer->length, output_buffer->alloc_size, buffer->length );
+	  
         mmal_buffer_header_mem_lock(buffer);
         memcpy(output_buffer->data, buffer->data, buffer->length);
         output_buffer->length = buffer->length;
@@ -268,7 +270,7 @@ int setup_camera(PORT_USERDATA *userdata) {
     mmal_format_copy(camera_video_port->format, camera_preview_port->format);
 
     format = camera_video_port->format;
-    format->encoding = MMAL_ENCODING_I420;// MMAL_ENCODING_OPAQUE;	// MMAL_ENCODING_I420;
+    format->encoding = MMAL_ENCODING_OPAQUE;// MMAL_ENCODING_OPAQUE;	// MMAL_ENCODING_I420;
     format->encoding_variant = MMAL_ENCODING_I420;
     format->es->video.width = VIDEO_WIDTH;
     format->es->video.height = VIDEO_HEIGHT;
